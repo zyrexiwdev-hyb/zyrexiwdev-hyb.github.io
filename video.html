@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<style>
+  html, body { margin: 0; width: 1280px; height: 720px; background: #000; overflow: hidden; }
+  iframe, video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+</style>
+</head>
+<body>
+<script>
+  const q = new URLSearchParams(location.search);
+  const yt = q.get('yt');
+  const src = q.get('src');
+  const t = parseInt(q.get('t') || '0', 10) || 0;
+
+  if (yt) {
+    const f = document.createElement('iframe');
+    f.referrerPolicy = 'strict-origin-when-cross-origin';
+    f.allow = 'autoplay; encrypted-media';
+    f.src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(yt) +
+      '?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3&start=' + t;
+    document.body.appendChild(f);
+  } else if (src) {
+    const v = document.createElement('video');
+    v.src = src;
+    v.autoplay = true;
+    v.muted = true;
+    v.playsInline = true;
+    v.addEventListener('loadedmetadata', () => { if (t > 0 && t < v.duration) v.currentTime = t; });
+    document.body.appendChild(v);
+    v.play().catch(() => {});
+  }
+</script>
+</body>
+</html>
