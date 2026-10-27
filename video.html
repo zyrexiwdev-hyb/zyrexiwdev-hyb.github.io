@@ -5,32 +5,75 @@
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <style>
   html, body { margin: 0; width: 1280px; height: 720px; background: #000; overflow: hidden; }
-  iframe, video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+  #yt, iframe, video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; pointer-events: none; }
 </style>
 </head>
 <body>
+<div id="yt"></div>
 <script>
+  // La page charge la vidéo EN PAUSE puis attend { action: 'play', t: <secondes> }
   const q = new URLSearchParams(location.search);
   const yt = q.get('yt');
   const src = q.get('src');
-  const t = parseInt(q.get('t') || '0', 10) || 0;
+
+  let ready = false;
+  let pending = null;
+  let player = null;
+  let vid = null;
+
+  function play(t) {
+    if (!ready) { pending = t; return; }
+    if (player) {
+      player.seekTo(t, true);
+      player.playVideo();
+    } else if (vid) {
+      if (t > 0 && vid.duration && t < vid.duration) vid.currentTime = t;
+      vid.play().catch(() => {});
+    }
+  }
+
+  window.addEventListener('message', (e) => {
+    const d = e.data;
+    if (d && d.action === 'play') play(parseInt(d.t, 10) || 0);
+  });
 
   if (yt) {
-    const f = document.createElement('iframe');
-    f.referrerPolicy = 'strict-origin-when-cross-origin';
-    f.allow = 'autoplay; encrypted-media';
-    f.src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(yt) +
-      '?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3&start=' + t;
-    document.body.appendChild(f);
+    const s = document.createElement('script');
+    s.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(s);
+    window.onYouTubeIframeAPIReady = () => {
+      player = new YT.Player('yt', {
+        width: '100%',
+        height: '100%',
+        videoId: yt,
+        host: 'https://www.youtube-nocookie.com',
+        playerVars: {
+          autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0,
+          modestbranding: 1, playsinline: 1, iv_load_policy: 3,
+        },
+        events: {
+          onReady: (ev) => {
+            ev.target.mute();
+            ready = true;
+            if (pending !== null) play(pending);
+          },
+        },
+      });
+    };
   } else if (src) {
-    const v = document.createElement('video');
-    v.src = src;
-    v.autoplay = true;
-    v.muted = true;
-    v.playsInline = true;
-    v.addEventListener('loadedmetadata', () => { if (t > 0 && t < v.duration) v.currentTime = t; });
-    document.body.appendChild(v);
-    v.play().catch(() => {});
+    document.getElementById('yt').remove();
+    vid = document.createElement('video');
+    vid.src = src;
+    vid.muted = true;
+    vid.playsInline = true;
+    vid.preload = 'auto';
+    vid.addEventListener('canplaythrough', () => {
+      if (ready) return;
+      ready = true;
+      if (pending !== null) play(pending);
+    });
+    document.body.appendChild(vid);
+    vid.load();
   }
 </script>
 </body>
