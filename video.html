@@ -6,20 +6,32 @@
 <style>
   html, body { margin: 0; width: 1280px; height: 720px; background: #000; overflow: hidden; }
   #yt, iframe, video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; pointer-events: none; }
+  /* Écran de fin : même écran que le countdown (tête de démon), sans les chiffres */
+  #end { display: none; z-index: 10; }
+  #end.on { display: block; }
 </style>
 </head>
 <body>
 <div id="yt"></div>
+<iframe id="end" src="screen.html"></iframe>
 <script>
-  // La page charge la vidéo EN PAUSE puis attend { action: 'play', t: <secondes> }
+  // La page charge la vidéo EN PAUSE (première image prête) puis attend { action: 'play', t: <secondes> }
   const q = new URLSearchParams(location.search);
   const yt = q.get('yt');
   const src = q.get('src');
+  const endFrame = document.getElementById('end');
 
   let ready = false;
   let pending = null;
   let player = null;
   let vid = null;
+
+  // Fin de la vidéo -> on affiche l'écran démon (sans countdown)
+  function showEnd() {
+    endFrame.classList.add('on');
+    if (vid) vid.pause();
+    if (player) { try { player.stopVideo(); } catch (e) {} }
+  }
 
   function play(t) {
     if (!ready) { pending = t; return; }
@@ -27,8 +39,14 @@
       player.seekTo(t, true);
       player.playVideo();
     } else if (vid) {
-      if (t > 0 && vid.duration && t < vid.duration) vid.currentTime = t;
-      vid.play().catch(() => {});
+      const go = () => {
+        // Joueur qui arrive après la fin de la vidéo : on ne la relance pas
+        if (vid.duration && t >= vid.duration - 0.2) { showEnd(); return; }
+        if (t > 0) vid.currentTime = t;
+        vid.play().catch(() => {});
+      };
+      if (vid.readyState >= 1) go();
+      else vid.addEventListener('loadedmetadata', go, { once: true });
     }
   }
 
@@ -57,6 +75,9 @@
             ready = true;
             if (pending !== null) play(pending);
           },
+          onStateChange: (ev) => {
+            if (ev.data === YT.PlayerState.ENDED) showEnd();
+          },
         },
       });
     };
@@ -67,11 +88,19 @@
     vid.muted = true;
     vid.playsInline = true;
     vid.preload = 'auto';
-    vid.addEventListener('canplaythrough', () => {
+    // Affiche la 1re image en pause (évite l'écran noir au démarrage)
+    vid.addEventListener('loadeddata', () => {
+      if (vid.paused && !vid.currentTime) vid.currentTime = 0.001;
+    }, { once: true });
+    vid.addEventListener('ended', showEnd);
+    const markReady = () => {
       if (ready) return;
       ready = true;
       if (pending !== null) play(pending);
-    });
+    };
+    vid.addEventListener('canplaythrough', markReady);
+    // Secours : si le navigateur ne signale jamais "canplaythrough", on démarre quand même
+    vid.addEventListener('canplay', () => setTimeout(markReady, 3000));
     document.body.appendChild(vid);
     vid.load();
   }
